@@ -1,0 +1,17 @@
+# Ambiente Virtual Python
+venv/
+*/venv/
+*.venv/
+*/*.venv/
+env/
+*/env/
+penv/
+*/penv/
+
+# Arquivos de cache Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+#arquivos acima de 100MB
+datas/1.youtube_data.csv
