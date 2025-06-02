@@ -22,7 +22,7 @@ PLN/
 
 ├── datas/                             # Pasta para arquivos CSV de dados
 
-│   ├── 1.youtube_data.csv             # (Opcional, dados brutos iniciais, pode ser grande)
+│   ├── 1.youtube_data.csv             # (Não presente no git, por ser muito grande. A ser instalado posteriormente)
 
 │   ├── 2.data_with_transcription.csv  # Saída do script 1
 
