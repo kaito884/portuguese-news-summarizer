@@ -67,13 +67,13 @@ def load_data(path):
         return None
 
 # --- 3. Interface Gráfica e Lógica Principal ---
-st.title("🤖 Demonstração do Sumarizador Fine-Tuned")
+st.title("🤖 Sumarizador de vídeos do Youtube")
 st.markdown("Selecione um título de notícia da lista abaixo. O IA irá gerar um resumo para você!")
 
 summarizer = load_model_and_pipeline()
 df_data = load_data(DATA_CSV_PATH)
 #pega apenas alguns resumos dos conjuntos de validacao
-video_ids_sample = ['wWpxjZOawoE', 'q8qLhla_DCE', 'XOOnnGyIaGs', 'rZAgm5RhxcI', 'IZ3iR8JdWeM', 'mG2UwZHPxA8', 'e1t4dgJdWeM']
+video_ids_sample = ['e1t4dgJdWeM', 'mG2UwZHPxA8', 'IZ3iR8JdWeM', 'rZAgm5RhxcI', 'XOOnnGyIaGs', 'q8qLhla_DCE', 'wWpxjZOawoE']
 df_data = df_data[df_data['video_id'].isin(video_ids_sample)]
 
 
