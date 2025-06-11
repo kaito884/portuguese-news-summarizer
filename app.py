@@ -5,187 +5,153 @@ import pandas as pd
 import torch
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
 from peft import PeftModel
-from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound, TranscriptsDisabled
-import time
 
-# --- 1. Configurações Globais ---
+# --- 1. Configurações Globais (sem alterações) ---
 st.set_page_config(
-    page_title="Resumidor de Vídeos do YouTube",
-    page_icon="✍️",
+    page_title="Sumarizador de Vídeos do Youtube",
+    page_icon="🤖",
     layout="wide"
 )
 
-# Constantes de configuração do modelo
+# ... (todas as suas constantes globais permanecem as mesmas) ...
 BASE_MODEL_NAME = "recogna-nlp/ptt5-base-summ"
-# ATENÇÃO: Verifique se este caminho relativo está correto em relação à sua pasta de projeto
-LORA_ADAPTER_PATH = "./ptt5_finetuned_lora_final" 
+LORA_ADAPTER_PATH = "./ptt5_finetuned_lora_final"
+DATA_CSV_PATH = "./datas/6.data_with_summaries.csv" 
+TRANSCRIPTION_COLUMN = "transcription"
+IDEAL_SUMMARY_COLUMN = "ideal_summary"
+TITLE_COLUMN = "title"
+VIDEO_ID_COLUMN = "video_id"
 TASK_PREFIX = "resuma: "
 SAFE_TOKENIZER_INPUT_MAX_LENGTH = 512
-
-# Parâmetros de geração para o resumo
 GEN_MIN_LENGTH = 20
-GEN_MAX_NEW_TOKENS = 100
+GEN_MAX_NEW_TOKENS = 150
 GEN_NUM_BEAMS = 4
 GEN_NO_REPEAT_NGRAM_SIZE = 3
 GEN_EARLY_STOPPING = True
-COOLDOWN_SECONDS = 5
 
-# Lista de Palavras/Frases de Preenchimento para limpeza
-FILLER_PATTERNS_TO_REMOVE = [
-    r'\b(e aí)\b', r'\b(né)\b', r'\b(tipo assim)\b',
-    r'\b(ahn?)\b', r'\b(ah?)\b', r'\b(eh?)\b',
-    r'\b(hmm)\b', r'\b(hum)\b',
-    r'\[música\]', r'\[aplausos\]', r'\[risadas\]',
-]
-
-# --- 2. Funções Utilitárias ---
-
-def get_youtube_transcript_text(youtube_url):
-    """Extrai a transcrição de uma URL do YouTube."""
-    video_id = None
-    patterns = [r"(?:v=|\/)([0-9A-Za-z_-]{11}).*", r"youtu\.be\/([0-9A-Za-z_-]{11})", r"embed\/([0-9A-Za-z_-]{11})", r"shorts\/([0-9A-Za-z_-]{11})"]
-    for pattern in patterns:
-        match = re.search(pattern, youtube_url)
-        if match:
-            video_id = match.group(1)
-            break
-    if not video_id:
-        return None, "URL do YouTube inválida ou formato não reconhecido."
-    try:
-        transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=['pt', 'pt-BR', 'en'])
-        full_transcript = " ".join([item['text'] for item in transcript_list])
-        return full_transcript, None
-    except (NoTranscriptFound, TranscriptsDisabled):
-        return None, f"Não foi possível obter a transcrição. Pode não existir em PT/EN ou estar desabilitada. (ID: {video_id})"
-    except Exception as e:
-        return None, f"Erro inesperado ao obter transcrição: {str(e)}"
-
-def preprocess_transcription(text):
-    """Aplica pré-processamento ao texto da transcrição."""
-    if not isinstance(text, str): return ""
-    processed_text = text.lower()
-    for pattern in FILLER_PATTERNS_TO_REMOVE:
-        processed_text = re.sub(pattern, '', processed_text, flags=re.IGNORECASE)
-    processed_text = re.sub(r'\s+', ' ', processed_text).strip()
-    return processed_text
-
-# --- 3. Carregamento do Modelo com Cache do Streamlit ---
+# --- 2. Funções com Cache (sem alterações) ---
 @st.cache_resource
 def load_model_and_pipeline():
-    """Carrega o modelo base, aplica o adaptador LoRA e cria a pipeline. Executado uma vez."""
+    # ... (código da função como estava) ...
     print("INICIANDO CARREGAMENTO DO MODELO (deve acontecer apenas uma vez)...")
     device_idx = 0 if torch.cuda.is_available() else -1
-    
-    tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_NAME, use_fast=True)
-    tokenizer.model_max_length = SAFE_TOKENIZER_INPUT_MAX_LENGTH
-    if hasattr(tokenizer, 'legacy'): tokenizer.legacy = False
-    
-    base_model = AutoModelForSeq2SeqLM.from_pretrained(BASE_MODEL_NAME)
-    model_to_use = PeftModel.from_pretrained(base_model, LORA_ADAPTER_PATH)
-    model_to_use.eval()
-    print("Modelo fine-tuned com LoRA carregado.")
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_NAME, use_fast=True)
+        tokenizer.model_max_length = SAFE_TOKENIZER_INPUT_MAX_LENGTH
+        if hasattr(tokenizer, 'legacy'): tokenizer.legacy = False
+        base_model = AutoModelForSeq2SeqLM.from_pretrained(BASE_MODEL_NAME)
+        model_to_use = PeftModel.from_pretrained(base_model, LORA_ADAPTER_PATH)
+        model_to_use.eval()
+        print("Modelo fine-tuned com LoRA carregado.")
+        summarizer_pipeline = pipeline("summarization", model=model_to_use, tokenizer=tokenizer, device=device_idx)
+        print("Pipeline de sumarização pronta!")
+        return summarizer_pipeline
+    except Exception as e:
+        print(f"Erro CRÍTICO ao carregar o modelo fine-tuned: {e}")
+        return None
 
-    summarizer_pipeline = pipeline("summarization", model=model_to_use, tokenizer=tokenizer, device=device_idx)
-    print("Pipeline de sumarização pronta!")
-    return summarizer_pipeline
+@st.cache_data
+def load_data(path):
+    # ... (código da função como estava) ...
+    print(f"Carregando dados de: {path}")
+    try:
+        df = pd.read_csv(path)
+        required_cols = [TRANSCRIPTION_COLUMN, IDEAL_SUMMARY_COLUMN, TITLE_COLUMN, VIDEO_ID_COLUMN]
+        df.dropna(subset=required_cols, inplace=True)
+        df.drop_duplicates(subset=[TITLE_COLUMN], keep='first', inplace=True)
+        return df
+    except FileNotFoundError:
+        return None
+    except Exception as e:
+        print(f"Erro ao carregar o CSV de dados: {e}")
+        return None
 
-# --- 4. Interface Gráfica e Lógica Principal ---
-st.title("✍️ Sumarizador de Vídeos do YouTube")
-st.markdown("Cole o link de um vídeo do YouTube abaixo para gerar um resumo usando um modelo T5 fine-tuned com LoRA.")
+# --- 3. Interface Gráfica e Lógica Principal ---
+st.title("🤖 Demonstração do Sumarizador Fine-Tuned")
+st.markdown("Selecione um título de notícia da lista abaixo. O IA irá gerar um resumo para você!")
 
-# Carregar o modelo e a pipeline (com cache)
-try:
-    summarizer = load_model_and_pipeline()
-except Exception as e:
-    st.error(f"Ocorreu um erro fatal ao carregar o modelo de sumarização: {e}")
+summarizer = load_model_and_pipeline()
+df_data = load_data(DATA_CSV_PATH)
+#pega apenas alguns resumos dos conjuntos de validacao
+video_ids_sample = ['wWpxjZOawoE', 'q8qLhla_DCE', 'XOOnnGyIaGs', 'rZAgm5RhxcI', 'IZ3iR8JdWeM', 'mG2UwZHPxA8', 'e1t4dgJdWeM']
+df_data = df_data[df_data['video_id'].isin(video_ids_sample)]
+
+
+if summarizer is None or df_data is None:
+    st.error("Falha na inicialização. Verifique os logs do terminal para mais detalhes.")
     st.stop()
 
-# Inicializar variáveis de estado da sessão
-if 'last_click_time' not in st.session_state:
-    st.session_state.last_click_time = 0.0
-if 'last_summary' not in st.session_state:
-    st.session_state.last_summary = ""
-if 'last_transcript' not in st.session_state:
-    st.session_state.last_transcript = ""
-if 'last_error' not in st.session_state:
-    st.session_state.last_error = ""
+video_titles = ["-- Selecione um vídeo --"] + df_data[TITLE_COLUMN].tolist()
+selected_title = st.selectbox(
+    "Selecione um vídeo para resumir:",
+    options=video_titles
+)
 
-# Componentes da interface
-youtube_url = st.text_input("Link do vídeo do YouTube:", placeholder="https://www.youtube.com/...", key="url_input")
+if 'last_result' not in st.session_state:
+    st.session_state.last_result = {}
 
-# Lógica do botão e cooldown
-time_since_last_click = time.time() - st.session_state.last_click_time
-is_in_cooldown = time_since_last_click < COOLDOWN_SECONDS
-
-if st.button("Gerar Resumo", type="primary", disabled=is_in_cooldown):
-    st.session_state.last_click_time = time.time() # Registrar tempo para o cooldown
-
-    if not youtube_url.strip():
-        st.warning("Por favor, insira uma URL do YouTube.")
-        st.rerun() # Re-executa para o aviso desaparecer na próxima ação
-    else:
-        # Limpar resultados antigos e iniciar o processamento
-        st.session_state.last_summary = ""
-        st.session_state.last_error = ""
-        st.session_state.last_transcript = ""
+if st.button("Gerar Resumo", type="primary") and selected_title != "-- Selecione um vídeo --":
+    with st.spinner("Gerando resumo com o modelo fine-tuned..."):
+        selected_row = df_data[df_data[TITLE_COLUMN] == selected_title].iloc[0]
+        transcript_to_summarize = str(selected_row[TRANSCRIPTION_COLUMN])
+        ideal_summary = str(selected_row[IDEAL_SUMMARY_COLUMN])
+        video_id = selected_row[VIDEO_ID_COLUMN]
         
-        with st.spinner("Processando..."):
-            status_placeholder = st.empty()
+        generated_summary = "Falha ao gerar o resumo."
+        try:
+            input_for_model = TASK_PREFIX + transcript_to_summarize
+            summary_output = summarizer(
+                [input_for_model],
+                min_length=GEN_MIN_LENGTH,
+                max_new_tokens=GEN_MAX_NEW_TOKENS,
+                no_repeat_ngram_size=GEN_NO_REPEAT_NGRAM_SIZE,
+                num_beams=GEN_NUM_BEAMS,
+                early_stopping=GEN_EARLY_STOPPING,
+                do_sample=False,
+                truncation=True
+            )
+            generated_summary = summary_output[0]['summary_text']
+            
+            st.session_state.last_result = {
+                "title": selected_title,
+                "transcript": transcript_to_summarize,
+                "ideal_summary": ideal_summary,
+                "generated_summary": generated_summary,
+                "video_id": video_id,
+                "success": True # Flag para indicar sucesso
+            }
 
-            # Etapa 1: Obter Transcrição
-            status_placeholder.info("1/3 - Buscando transcrição do vídeo...")
-            transcript, error_msg = get_youtube_transcript_text(youtube_url)
+        except Exception as e:
+            st.session_state.last_result = {"error": f"Ocorreu um erro durante a sumarização: {e}"}
             
-            if error_msg:
-                st.session_state.last_error = error_msg
-            else:
-                # Etapa 2: Pré-processar Transcrição
-                status_placeholder.info("2/3 - Pré-processando o texto...")
-                preprocessed_transcript = preprocess_transcription(transcript)
-                st.session_state.last_transcript = preprocessed_transcript # Salvar para exibição
-                
-                if not preprocessed_transcript.strip():
-                    st.session_state.last_error = "Transcrição vazia após pré-processamento."
-                else:
-                    # Etapa 3: Gerar Resumo
-                    status_placeholder.info("3/3 - Gerando o resumo com o modelo fine-tuned...")
-                    try:
-                        summary_output = summarizer(
-                            TASK_PREFIX + preprocessed_transcript,
-                            min_length=GEN_MIN_LENGTH,
-                            max_new_tokens=GEN_MAX_NEW_TOKENS,
-                            no_repeat_ngram_size=GEN_NO_REPEAT_NGRAM_SIZE,
-                            num_beams=GEN_NUM_BEAMS,
-                            early_stopping=GEN_EARLY_STOPPING,
-                            do_sample=False,
-                            truncation=True
-                        )
-                        st.session_state.last_summary = summary_output[0]['summary_text']
-                    except Exception as e:
-                        st.session_state.last_error = f"Ocorreu um erro durante a sumarização: {e}"
-            
-            status_placeholder.empty() # Limpa a mensagem de status "em progresso"
+# Bloco de exibição (lê do session_state para persistir os resultados)
+if st.session_state.last_result:
+    result = st.session_state.last_result
+
+    if result.get("error"):
+        st.error(result["error"])
+
+    elif result.get("success"):
+        st.success(f"Processo concluído para: **{result['title']}**")
+
+        # Construir o link do YouTube
+        youtube_link = f"https://www.youtube.com/watch?v={result['video_id']}"
+        st.markdown(f"**Link para o vídeo original:** [Assistir no YouTube]({youtube_link})")
+
+        st.divider()
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.subheader("Resumo Ideal")
+            # MODIFICAÇÃO: Escapar o caractere '$' antes de exibir
+            st.info(result['ideal_summary'].replace('$', '\\$'))
         
-        st.rerun() # Re-executa uma vez para atualizar a tela com os resultados finais
+        with col2:
+            st.subheader("Resumo Gerado pelo IA")
+            # MODIFICAÇÃO: Escapar o caractere '$' antes de exibir
+            st.success(result['generated_summary'].replace('$', '\\$'))
 
-# --- Bloco de exibição (sempre ativo, lê do session_state) ---
-if st.session_state.last_error:
-    st.error(st.session_state.last_error)
-
-# Exibe a transcrição e o resumo se eles existirem no estado da sessão
-if st.session_state.last_transcript:
-    with st.expander("Ver transcrição pré-processada", expanded=False):
-        st.text_area("", st.session_state.last_transcript, height=150, key="transcript_output_area")
-
-if st.session_state.last_summary:
-    st.success("Resumo gerado com sucesso!")
-    st.text_area("Resumo:", st.session_state.last_summary, height=250, key="summary_output_area")
-
-# Lógica do cooldown no final para não interferir na exibição do resultado
-if is_in_cooldown:
-    remaining_time = COOLDOWN_SECONDS - (time.time() - st.session_state.last_click_time)
-    # Mostra um "brinde" e força re-execução para atualizar o estado do botão
-    if remaining_time > 0:
-        st.toast(f"Aguarde {remaining_time:.1f} segundos...")
-        time.sleep(1) # Pequena pausa para o usuário ver o toast
-        st.rerun()
+        with st.expander("Ver transcrição original pré-processada", expanded=False):
+            # MODIFICAÇÃO: Escapar o caractere '$' antes de exibir
+            st.text_area("", result['transcript'].replace('$', '\\$'), height=200)

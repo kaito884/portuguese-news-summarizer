@@ -12,14 +12,14 @@ IDEAL_SUMMARIES_CSV_PATH = '../datas/5.ideal_summary_all.csv'
 # Coluna de resumo ideal no arquivo IDEAL_SUMMARIES_CSV_PATH
 IDEAL_SUMMARY_COLUMN_NAME_IN_FILE = "ideal_summary"
 
-OUTPUT_CSV_FILE_PATH = '../datas/7.data_with_summaries.csv' # Nome do arquivo de saída final
+OUTPUT_CSV_FILE_PATH = '../datas/6.data_with_summaries.csv' # Nome do arquivo de saída final
 TRANSCRIPTION_COLUMN = 'transcription' # Nome da coluna de transcrição (comum a ambos os arquivos)
 # Nome da coluna para os resumos gerados pelo modelo neste script
 GENERATED_SUMMARY_COLUMN_NAME = 'summary_model_finetuned'
 
 # --- Configurações do Modelo Fine-Tuned ---
 BASE_MODEL_NAME = "recogna-nlp/ptt5-base-summ" 
-LORA_ADAPTER_PATH = "./ptt5_finetuned_lora_final"
+LORA_ADAPTER_PATH = "../ptt5_finetuned_lora_final"
 
 # Parâmetros de geração para o lote
 TASK_PREFIX = "resuma: " 
@@ -30,7 +30,7 @@ NUM_BEAMS = 4
 EARLY_STOPPING = True
 TOKEN_AUTH = None 
 
-NUM_ROWS_TO_PROCESS = None 
+NUM_ROWS_TO_PROCESS = None
 SAFE_TOKENIZER_INPUT_MAX_LENGTH = 1024
 MINI_BATCH_SIZE = 64
 
